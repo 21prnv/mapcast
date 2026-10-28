@@ -1,6 +1,9 @@
 {
   "name": "mapcast",
-  "owner": { "name": "mapcast contributors" },
+  "description": "mapcast: animated map videos for explainers and Shorts, as a Claude Code plugin (skill + MCP server).",
+  "owner": {
+    "name": "21prnv"
+  },
   "plugins": [
     {
       "name": "mapcast",

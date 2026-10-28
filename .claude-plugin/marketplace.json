@@ -1,0 +1,12 @@
+{
+  "name": "mapcast",
+  "owner": { "name": "mapcast contributors" },
+  "plugins": [
+    {
+      "name": "mapcast",
+      "source": "./",
+      "description": "Animated map videos and images: highlight countries on satellite imagery or paper maps.",
+      "version": "0.1.0"
+    }
+  ]
+}

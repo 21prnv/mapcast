@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { extname, join, dirname } from 'node:path';
+import { mkdir, readFile } from 'node:fs/promises';
+import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { normalizeScene } from './scene.js';
@@ -104,30 +104,39 @@ function ffmpeg(args) {
   return { proc, done };
 }
 
-// Render a scene to .mp4, .png/.jpg (a still, default the final frame) or .gif.
-export async function render(sceneInput, out, { at, onProgress } = {}) {
+const STILLS = ['.png', '.jpg', '.jpeg'];
+export const FORMATS = [...STILLS, '.mp4', '.gif'];
+
+// Render a scene to .mp4, .gif or a still (.png/.jpg, default the final frame).
+// `previewWidth` also returns a small JPEG of the final frame (base64) so agents can look at the result.
+export async function render(sceneInput, out, { at, onProgress, previewWidth } = {}) {
+  const ext = extname(out).toLowerCase();
+  if (!FORMATS.includes(ext)) throw new Error(`Output must end in ${FORMATS.join(', ')} (got "${out}")`);
   const payload = await prepare(sceneInput);
+  await mkdir(dirname(resolve(out)), { recursive: true });
   const { browser, page } = await openPage(payload);
   try {
-    const ext = extname(out).toLowerCase();
-    if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
-      await page.evaluate((time) => window.mapcast.draw(time), at ?? payload.duration);
+    const finalAt = at ?? payload.duration;
+    if (STILLS.includes(ext)) {
+      await page.evaluate((time) => window.mapcast.draw(time), finalAt);
       await page.screenshot({ path: out, type: ext === '.png' ? 'png' : 'jpeg', quality: ext === '.png' ? undefined : 92 });
-      return { out, attribution: payload.attribution };
+    } else {
+      const codec = ext === '.gif'
+        ? ['-vf', 'fps=15,scale=iw/2:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse']
+        : ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'medium', '-movflags', '+faststart'];
+      const { proc, done } = ffmpeg(['-y', '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', String(payload.fps), '-i', '-', ...codec, out]);
+      const total = Math.round(payload.duration * payload.fps);
+      for (let i = 0; i < total; i++) {
+        const buf = await frame(page, i / payload.fps);
+        if (!proc.stdin.write(buf)) await new Promise((r) => proc.stdin.once('drain', r));
+        onProgress?.(i + 1, total);
+      }
+      proc.stdin.end();
+      await done;
+      await page.evaluate((time) => window.mapcast.draw(time), finalAt);
     }
-    const codec = ext === '.gif'
-      ? ['-vf', 'fps=15,scale=iw/2:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse']
-      : ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'medium', '-movflags', '+faststart'];
-    const { proc, done } = ffmpeg(['-y', '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', String(payload.fps), '-i', '-', ...codec, out]);
-    const total = Math.round(payload.duration * payload.fps);
-    for (let i = 0; i < total; i++) {
-      const buf = await frame(page, i / payload.fps);
-      if (!proc.stdin.write(buf)) await new Promise((r) => proc.stdin.once('drain', r));
-      onProgress?.(i + 1, total);
-    }
-    proc.stdin.end();
-    await done;
-    return { out, attribution: payload.attribution };
+    const preview = previewWidth ? await page.evaluate((w) => window.mapcast.preview(w), previewWidth) : undefined;
+    return { out, attribution: payload.attribution, duration: payload.duration, width: payload.width, height: payload.height, preview };
   } finally {
     await browser.close();
   }

@@ -51,6 +51,7 @@ Each highlight:
 | `label` | text, or `false` for none | the country name |
 | `border` | `{ "color", "width", "glow" }` or `false` | white, glowing |
 | `labelAnim` | `rise`, `type` (typewriter), `spread` (letters close in), `slide`, `pop` | `rise` |
+| `labelSize` | multiplier on the automatic label size, e.g. `0.7` or `1.3` | `1` |
 | `labelFont` | `sans`, `serif`, or any font name | `sans` (`serif` on paper) |
 | `capital` | `true` for the capital, or a city name like `"Mumbai"`: pulsing dot with its name | off |
 | `start` | seconds when this country starts animating | staggered automatically |
@@ -72,7 +73,8 @@ Colour countries by a number, with a legend:
 ```
 
 `scheme` is one of `reds`, `blues`, `greens`, `heat`, `purples`, `diverging`, or a list of colours.
-Set `"labels": true` to name each country and `min`/`max` to fix the colour range.
+Set `"labels"` to `"name"`, `"value"` (the number with `prefix`/`unit`) or `"both"` to label each country,
+and `min`/`max` to fix the colour range. A highlight's `label` can have a second line: `"INDIA\n1.4 BILLION"`.
 
 Render it:
 
@@ -83,10 +85,46 @@ mapcast render scene.json -o out.png --at 1.2
 cat scene.json | mapcast render - -o out.gif
 ```
 
+## Use it from AI tools
+
+mapcast ships three ways in. All of them render with the same engine and the same scene format.
+
+**Claude Code plugin** (skill + MCP server in one install):
+
+```
+/plugin marketplace add <owner>/mapcast
+/plugin install mapcast@mapcast
+```
+
+Then just ask: "make a YouTube Short of Japan with its flag" or "old map of Egypt with Cairo marked".
+
+**MCP server** for Claude Desktop, Cursor, Windsurf, Codex and any other MCP client. Add to the client's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "mapcast": { "command": "npx", "args": ["-y", "mapcast", "mcp"] }
+  }
+}
+```
+
+It exposes `render_map` (saves the video or image and returns a preview of the final frame) and `preview_map`
+(one frame, to check a scene before rendering). The full scene schema is in the tool definitions.
+
+**Skill only** (for agents that read `SKILL.md` skills but run commands themselves):
+
+```bash
+npx skills add <owner>/mapcast
+```
+
+The skill lives in [`skills/mapcast`](skills/mapcast), with [22 worked request-to-scene examples](skills/mapcast/references/examples.md).
+
 ## Requirements
 
 Node 20+, `ffmpeg` on your PATH, and Chromium for Playwright (`npx playwright install chromium`).
 Map data downloads once and is cached in `~/.cache/mapcast`.
+
+`npm test` checks every example scene (including the skill's) against the schema and resolves every country and city.
 
 ## Licence
 

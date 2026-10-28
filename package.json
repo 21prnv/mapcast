@@ -10,7 +10,10 @@
     "bin",
     "src",
     "assets",
-    "examples"
+    "examples",
+    "skills",
+    ".claude-plugin",
+    ".mcp.json"
   ],
   "engines": {
     "node": ">=20"
@@ -26,7 +29,14 @@
     "mcp"
   ],
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "playwright": "^1.64.1",
     "polylabel": "^2.1.0"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
   }
 }

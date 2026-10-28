@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mapcast": {
+      "command": "npx",
+      "args": ["-y", "mapcast", "mcp"]
+    }
+  }
+}

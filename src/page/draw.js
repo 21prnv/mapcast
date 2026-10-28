@@ -336,11 +336,16 @@ function drawBorder(s, p) {
   ctx.restore();
 }
 
+// A label may have several lines ("SPAIN\n11.4%"); lines after the first are the smaller value line.
+const labelLines = (text) => text.split('\n');
+
 function labelSize(s) {
-  const chars = s.h.label.length;
+  const lines = labelLines(s.h.label);
+  const chars = Math.max(lines[0].length, ...lines.slice(1).map((l) => l.length * 0.75));
   // Caps run about 0.8em wide with our tracking; keep the word inside the country.
   const cap = shapes.length > 1 ? H * 0.06 : H * 0.1;
-  return Math.max(H * 0.025, Math.min(cap, (s.c.labelWidth * cam.k * 0.85) / (chars * 0.82)));
+  const fit = Math.max(shapes.length > 1 ? H * 0.018 : H * 0.025, Math.min(cap, (s.c.labelWidth * cam.k * 0.85) / (chars * 0.82)));
+  return fit * s.h.labelSize;
 }
 
 function drawLabel(s, p) {
@@ -349,27 +354,36 @@ function drawLabel(s, p) {
   const [x, y] = toScreen(s.c.labelPoint);
   const size = labelSize(s);
   const e = easeOut(p);
-  let text = h.label;
+  const full = labelLines(h.label);
+  let lines = full;
   let dx = 0, dy = 0, scale = 1, alpha = e, spacing = 0.05;
   if (h.labelAnim === 'rise') dy = (1 - e) * size * 0.35;
   else if (h.labelAnim === 'slide') dx = -(1 - e) * size * 1.5;
   else if (h.labelAnim === 'spread') { spacing = lerp(0.6, 0.05, e); alpha = clamp01(p * 2); }
   else if (h.labelAnim === 'pop') { scale = easeOutBack(clamp01(p)); alpha = clamp01(p * 3); }
-  else if (h.labelAnim === 'type') { text = text.slice(0, Math.ceil(p * text.length)); alpha = 1; }
+  else if (h.labelAnim === 'type') { lines = labelLines(h.label.slice(0, Math.ceil(p * h.label.length))); alpha = 1; }
 
   ctx.save();
   ctx.setTransform(scale, 0, 0, scale, x + dx, y + dy);
   ctx.globalAlpha = alpha;
-  ctx.font = `${h.labelWeight} ${size}px ${FONTS[h.labelFont] || h.labelFont}`;
-  ctx.letterSpacing = `${size * spacing}px`;
   ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
   const paper = S.basemap.kind === 'paper';
   ctx.shadowColor = paper ? 'rgba(239,226,194,0.9)' : 'rgba(0,0,0,0.55)';
-  ctx.shadowBlur = size * (paper ? 0.25 : 0.35);
   ctx.fillStyle = h.labelColor;
-  // Typing grows from the left edge of the finished word so letters don't shift as they appear.
-  ctx.textAlign = 'left';
-  ctx.fillText(text, -ctx.measureText(h.label).width / 2, 0);
+  const sizes = full.map((_, i) => (i === 0 ? size : size * 0.75));
+  const total = sizes.reduce((a, b) => a + b * 1.1, 0);
+  let ly = -total / 2;
+  lines.forEach((line, i) => {
+    const fs = sizes[i];
+    ctx.font = `${i === 0 ? h.labelWeight : 600} ${fs}px ${FONTS[h.labelFont] || h.labelFont}`;
+    ctx.letterSpacing = `${fs * spacing}px`;
+    ctx.shadowBlur = fs * (paper ? 0.25 : 0.35);
+    ly += (fs * 1.1) / 2;
+    // Typing grows from the left edge of the finished line so letters don't shift as they appear.
+    ctx.fillText(line, -ctx.measureText(full[i]).width / 2, ly);
+    ly += (fs * 1.1) / 2;
+  });
   ctx.restore();
 }
 
@@ -381,7 +395,8 @@ function drawCity(s, t) {
   const [x, y] = toScreen(city.point);
   const paper = S.basemap.kind === 'paper';
   const ink = paper ? PAPER.ink : '#ffffff';
-  const r = H * 0.007;
+  const base = Math.min(W, H);
+  const r = base * 0.007;
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   // Two pulse rings that keep repeating once the dot has landed.
@@ -401,14 +416,18 @@ function drawCity(s, t) {
   ctx.beginPath();
   ctx.arc(x, y, r * easeOutBack(p), 0, Math.PI * 2);
   ctx.fill();
-  ctx.font = `600 ${H * 0.024}px ${paper ? FONTS.serif : FONTS.sans}`;
+  // Cinzel's small capitals read smaller than Montserrat at the same size, so paper gets a bump.
+  ctx.font = `${paper ? 700 : 600} ${base * (paper ? 0.036 : 0.03) * s.h.labelSize}px ${paper ? FONTS.serif : FONTS.sans}`;
   ctx.letterSpacing = '0px';
   ctx.textBaseline = 'middle';
-  ctx.textAlign = 'left';
   ctx.fillStyle = ink;
-  ctx.shadowColor = paper ? 'rgba(239,226,194,0.9)' : 'rgba(0,0,0,0.7)';
-  ctx.shadowBlur = 6;
-  ctx.fillText(city.name, x + r * 2.2 + (1 - easeOut(p)) * 10, y);
+  ctx.shadowColor = paper ? 'rgba(239,226,194,0.95)' : 'rgba(0,0,0,0.7)';
+  ctx.shadowBlur = paper ? 8 : 6;
+  // Keep the name on screen: put it on the left of the dot when the right side would run off the frame.
+  const gap = r * 2.2 + (1 - easeOut(p)) * 10;
+  const left = x + gap + ctx.measureText(city.name).width > W - base * 0.03;
+  ctx.textAlign = left ? 'right' : 'left';
+  ctx.fillText(city.name, left ? x - gap : x + gap, y);
   ctx.restore();
 }
 
@@ -611,5 +630,15 @@ window.mapcast = {
     return { missing, noFlag, levels: levels.map((l) => ({ z: l.z, w: l.img.width, h: l.img.height })) };
   },
   draw,
+  // Downscaled JPEG of the current frame, base64, for agents to look at.
+  async preview(width) {
+    const h = Math.round((H * width) / W);
+    const off = new OffscreenCanvas(width, h);
+    off.getContext('2d').drawImage(canvas, 0, 0, width, h);
+    const bytes = new Uint8Array(await (await off.convertToBlob({ type: 'image/jpeg', quality: 0.82 })).arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  },
 };
 window.mapcastReady = true;

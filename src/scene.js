@@ -39,6 +39,22 @@ function ramp(stops, t) {
   return `#${a.map((v, i) => Math.round(v + (b[i] - v) * local).toString(16).padStart(2, '0')).join('')}`;
 }
 
+const formatNumber = (v) => {
+  const abs = Math.abs(v);
+  return Number(v.toFixed(abs >= 100 ? 0 : abs >= 10 ? 1 : 2)).toLocaleString('en-US');
+};
+
+// data.labels: true/"name" shows the country, "value" the number, "both" the country over the number.
+function dataLabel(data, country, v) {
+  const value = `${data.prefix ?? ''}${formatNumber(v)}${data.unit ?? ''}`;
+  const mode = data.labels === true ? 'name' : data.labels;
+  if (mode === 'name') return country.toUpperCase();
+  if (mode === 'value') return value;
+  if (mode === 'both') return `${country.toUpperCase()}\n${value}`;
+  if (mode) fail('data.labels must be true, "name", "value" or "both"');
+  return false;
+}
+
 // `data` turns numbers into a coloured map: { values: { India: 3.9, China: 18 }, scheme: "reds", title: "GDP ($T)" }.
 function dataHighlights(data) {
   const entries = Object.entries(data.values ?? {});
@@ -52,7 +68,7 @@ function dataHighlights(data) {
     country,
     style: 'solid',
     color: ramp(stops, max === min ? 1 : Math.max(0, Math.min(1, (v - min) / (max - min)))),
-    label: data.labels ? `${country.toUpperCase()}` : false,
+    label: dataLabel(data, country, Number(v)),
     border: { width: 1.5, glow: 0 },
     start: 0.3 + (i % 12) * 0.05,
   }));
@@ -100,6 +116,7 @@ export function normalizeScene(input) {
       label: h.label === false ? false : h.label ?? null, // null is filled with the country name later
       labelColor: color(h.labelColor, ink),
       labelWeight: h.labelWeight ?? 700,
+      labelSize: h.labelSize ?? 1,
       labelFont: h.labelFont ?? (paper ? 'serif' : 'sans'),
       labelAnim: oneOf(h.labelAnim ?? input.labelAnim ?? 'rise', LABEL_ANIMS, `highlights[${i}].labelAnim`),
       capital: h.capital ?? false, // true for the capital, or a city name

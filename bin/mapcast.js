@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { render } from '../src/render.js';
 
 const HELP = `mapcast: animated map videos and images from a JSON scene
 
 Usage
+  mapcast mcp                     start the MCP server (stdio) for Claude, Cursor and other AI tools
+  mapcast schema                  print the scene JSON Schema
   mapcast render <scene.json|-> -o <out.mp4|out.png|out.gif> [--at <seconds>]
-  mapcast quick <country> [more countries...] -o <out> [--style solid|highlight|outline] [--color red] [--camera push-in|zoom-in|static] [--aspect 16:9|9:16|1:1|4:5]
+  mapcast quick <country> [more countries...] -o <out> [--style solid|highlight|outline|flag] [--basemap satellite|paper] [--color red] [--camera push-in|zoom-in|static] [--aspect 16:9|9:16|1:1|4:5]
 
 Examples
   mapcast quick India -o india.mp4
@@ -36,6 +38,8 @@ async function readScene(src) {
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
+  if (cmd === 'mcp') return (await import('../src/mcp.js')).startMcpServer();
+  if (cmd === 'schema') return console.log(JSON.stringify((await import('../src/schema.js')).sceneSchema, null, 2));
   const opts = parse(rest);
   if (!cmd || cmd === 'help' || cmd === '--help' || !opts.out) {
     console.log(HELP);
@@ -46,7 +50,7 @@ async function main() {
   else if (cmd === 'quick') {
     scene = {
       highlights: opts._.map((country) => ({ country, style: opts.style, color: opts.color })),
-      camera: opts.camera, aspect: opts.aspect, duration: opts.duration ? +opts.duration : undefined,
+      camera: opts.camera, aspect: opts.aspect, basemap: opts.basemap, duration: opts.duration ? +opts.duration : undefined,
     };
   } else {
     console.error(`Unknown command "${cmd}".\n\n${HELP}`);
@@ -58,7 +62,9 @@ async function main() {
     onProgress: (i, n) => process.stderr.isTTY && process.stderr.write(`\rrendering frame ${i}/${n}`),
   });
   if (process.stderr.isTTY) process.stderr.write('\n');
-  console.log(`wrote ${res.out} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  const mb = ((await stat(res.out)).size / 1e6).toFixed(1);
+  const length = /\.(mp4|gif)$/i.test(res.out) ? `, ${res.duration}s` : '';
+  console.log(`wrote ${res.out} (${res.width}x${res.height}${length}, ${mb} MB) in ${((Date.now() - started) / 1000).toFixed(1)}s`);
   console.log(`credit: ${res.attribution}`);
 }
 

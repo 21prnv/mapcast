@@ -1,0 +1,7 @@
+{
+  "basemap": "paper",
+  "duration": 5,
+  "highlights": [
+    { "country": "Italy", "color": "#a3221b", "capital": true, "labelAnim": "type" }
+  ]
+}

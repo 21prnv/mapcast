@@ -1,0 +1,9 @@
+{
+  "aspect": "4:5",
+  "duration": 5,
+  "camera": "push-in",
+  "effects": { "grid": true, "blur": 0.7, "grade": "muted" },
+  "highlights": [
+    { "country": "France", "style": "flag", "labelAnim": "spread" }
+  ]
+}

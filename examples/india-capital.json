@@ -1,0 +1,7 @@
+{
+  "duration": 5,
+  "effects": { "borders": true, "grid": true },
+  "highlights": [
+    { "country": "India", "capital": true, "labelAnim": "pop" }
+  ]
+}

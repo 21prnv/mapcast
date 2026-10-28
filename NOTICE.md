@@ -8,8 +8,13 @@
   (contains modified Copernicus Sentinel data 2016), CC BY 4.0. Credit is required when this source is used;
   `mapcast` prints the exact credit line after every render.
 
+- **Capitals and cities:** Natural Earth populated places, public domain.
+- **Flags:** artwork from [flag-icons](https://github.com/lipis/flag-icons) (MIT), downloaded on first use. National flag
+  designs are public domain.
+
 ## Fonts
-- **Montserrat** by The Montserrat Project Authors, SIL Open Font License 1.1 (`assets/fonts/OFL.txt`).
+- **Montserrat** by The Montserrat Project Authors, SIL Open Font License 1.1 (`assets/fonts/Montserrat-OFL.txt`).
+- **Cinzel** by Natanael Gama, SIL Open Font License 1.1 (`assets/fonts/Cinzel-OFL.txt`).
 
 ## Prior art
 These MIT-licensed projects shaped the design:

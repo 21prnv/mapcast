@@ -8,7 +8,10 @@ Free, open source and built so AI agents can drive it.
 npx mapcast quick India -o india.mp4
 npx mapcast quick "United States" --style highlight --color yellow -o usa.png
 npx mapcast quick France Spain Germany --camera zoom-in -o europe.mp4
+npx mapcast quick France --style flag -o france.mp4
 ```
+
+Every example in [`examples/`](examples) renders as-is: `mapcast render examples/france-flag.json -o france.mp4`.
 
 ## Scene format
 
@@ -29,21 +32,47 @@ npx mapcast quick France Spain Germany --camera zoom-in -o europe.mp4
 | `duration` | seconds | `5` |
 | `fps` | frames per second | `30` |
 | `camera` | `push-in`, `zoom-in`, `static`, or `{ "move", "fill", "from" }` | `push-in` |
-| `basemap` | `satellite`, `bluemarble`, `sentinel` | `satellite` |
+| `basemap` | `satellite`, `bluemarble`, `sentinel`, `paper` (old parchment map) | `satellite` |
 | `pov` | `auto` (the country's own official borders), `default`, or a code like `ind`, `chn`, `pak` | `auto` |
 | `effects.grade` | `natural`, `muted`, `mono` | `natural` |
 | `effects.vignette` | 0 to 1 | `0.45` |
+| `effects.blur` | 0 to 1: soft-focus edges, like a camera lens | `0` |
+| `effects.grid` | `true` or `{ "step", "color", "opacity" }`: lat/long grid over the sea only | off |
+| `effects.borders` | `true`: thin borders of neighbouring countries | on for `paper` |
+| `labelAnim` | default label animation for every highlight | `rise` |
 
 Each highlight:
 
 | Field | Values | Default |
 |---|---|---|
 | `country` | name (`"India"`) or ISO code (`"IN"`, `"IND"`) | required |
-| `style` | `solid` (tinted fill), `highlight` (rest of the world goes grey), `outline` | `solid` |
+| `style` | `solid` (tinted fill), `highlight` (rest of the world goes grey), `outline`, `flag` (the country's flag over the terrain) | `solid` |
 | `color` | any CSS colour or `red`, `yellow`, `blue`, ... | a distinct colour per country |
 | `label` | text, or `false` for none | the country name |
 | `border` | `{ "color", "width", "glow" }` or `false` | white, glowing |
+| `labelAnim` | `rise`, `type` (typewriter), `spread` (letters close in), `slide`, `pop` | `rise` |
+| `labelFont` | `sans`, `serif`, or any font name | `sans` (`serif` on paper) |
+| `capital` | `true` for the capital, or a city name like `"Mumbai"`: pulsing dot with its name | off |
 | `start` | seconds when this country starts animating | staggered automatically |
+
+## Data maps
+
+Colour countries by a number, with a legend:
+
+```json
+{
+  "data": {
+    "title": "GDP 2024 (trillion US$)",
+    "prefix": "$",
+    "unit": "T",
+    "scheme": "heat",
+    "values": { "India": 3.9, "China": 18.7, "Japan": 4.1 }
+  }
+}
+```
+
+`scheme` is one of `reds`, `blues`, `greens`, `heat`, `purples`, `diverging`, or a list of colours.
+Set `"labels": true` to name each country and `min`/`max` to fix the colour range.
 
 Render it:
 

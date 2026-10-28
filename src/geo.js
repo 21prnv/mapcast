@@ -48,7 +48,7 @@ export async function resolveCountries(queries, pov = 'auto') {
     pov = own.length === 1 && POVS.includes(own[0]) ? own[0] : 'default';
   }
   if (pov !== 'default') features = await loadCountries(pov);
-  return queries.map((q) => findCountry(features, q));
+  return { all: features, matched: queries.map((q) => findCountry(features, q)) };
 }
 
 // Web Mercator, in pixels of a 256px tile world at zoom 0.
@@ -73,6 +73,63 @@ const bboxOf = (rings) => {
   return b;
 };
 
+let places;
+async function loadPlaces() {
+  if (places) return places;
+  const name = 'ne_50m_populated_places_simple';
+  const buf = await cachedFetch(`${NE_BASE}${name}.geojson`, `natural-earth/${name}.geojson`);
+  places = JSON.parse(buf.toString('utf8')).features.map((f) => f.properties);
+  return places;
+}
+
+// The capital by default, or a named city in that country. Returns { name, point } or null.
+export async function findCity(code, which = true) {
+  const all = (await loadPlaces()).filter((p) => p.adm0_a3 === code);
+  const clean = (s) => s.replace(/\s+/g, ' ').trim();
+  let hit;
+  if (which === true) {
+    hit = all.filter((p) => p.featurecla === 'Admin-0 capital' && p.adm0cap === 1).sort((a, b) => b.pop_max - a.pop_max)[0];
+  } else {
+    const q = norm(which);
+    hit = all.find((p) => [p.name, p.nameascii, p.namealt].some((n) => norm(n) === q));
+  }
+  return hit ? { name: clean(hit.name), lonlat: [hit.longitude, hit.latitude] } : null;
+}
+
+// Drop points closer together than `tol` (projected units); keeps rings closed and at least 4 points.
+function simplify(ring, tol) {
+  if (ring.length <= 8) return ring;
+  const out = [ring[0]];
+  for (let i = 1; i < ring.length - 1; i++) {
+    const p = out[out.length - 1];
+    if (Math.abs(ring[i][0] - p[0]) + Math.abs(ring[i][1] - p[1]) >= tol) out.push(ring[i]);
+  }
+  out.push(ring[ring.length - 1]);
+  return out.length >= 4 ? out : ring;
+}
+
+// Every country overlapping `box` (projected), for land masks, paper maps and neighbour borders.
+// Rings are unwrapped around `centerLon` so the area near the antimeridian stays continuous.
+export function contextCountries(features, box, centerLon, tol) {
+  const out = [];
+  for (const f of features) {
+    const polygons = [];
+    for (const poly of polygonsOf(f.geometry)) {
+      const rings = poly.map((ring) => {
+        const mid = ring.reduce((s, p) => s + p[0], 0) / ring.length;
+        const shift = 360 * Math.round((centerLon - mid) / 360);
+        return ring.map(([lon, lat]) => project([lon + shift, lat]));
+      });
+      const b = bboxOf([rings[0]]);
+      if (b[2] < box[0] || b[0] > box[2] || b[3] < box[1] || b[1] > box[3]) continue;
+      if (Math.max(b[2] - b[0], b[3] - b[1]) < tol * 2) continue;
+      polygons.push(rings.map((r) => simplify(r, tol)));
+    }
+    if (polygons.length) out.push({ code: f.properties.ADM0_A3, polygons });
+  }
+  return out;
+}
+
 // Turn a country feature into projected polygons plus framing hints. Longitudes are unwrapped
 // around the mainland so countries crossing the antimeridian (USA, Russia, Fiji) stay in one piece.
 export function prepareCountry(feature) {
@@ -95,9 +152,12 @@ export function prepareCountry(feature) {
     return near && ringArea(p[0]) > mainArea * 0.002;
   });
   const lp = polylabel(main, Math.max(0.001, span / 400));
+  const iso2 = [feature.properties.ISO_A2_EH, feature.properties.ISO_A2].find((c) => c && c !== '-99');
   return {
     name: feature.properties.NAME,
     code: feature.properties.ADM0_A3,
+    iso2: iso2?.toLowerCase(),
+    centerLon: center,
     polygons,
     frameBox: bboxOf(framed.flat()),
     fullBox: bboxOf(polygons.flat()),

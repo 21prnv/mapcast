@@ -1,0 +1,12 @@
+{
+  "duration": 6,
+  "camera": "static",
+  "effects": { "borders": true },
+  "data": {
+    "title": "GDP 2024 (trillion US$)",
+    "prefix": "$",
+    "unit": "T",
+    "scheme": "heat",
+    "values": { "India": 3.9, "China": 18.7, "Japan": 4.1, "Pakistan": 0.37, "Bangladesh": 0.45, "Indonesia": 1.4, "Thailand": 0.53, "Vietnam": 0.47, "South Korea": 1.7 }
+  }
+}

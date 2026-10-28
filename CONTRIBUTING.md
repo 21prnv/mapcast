@@ -42,4 +42,4 @@ Only add imagery, data or fonts whose licence allows free reuse in published vid
 ## Releasing
 
 Bump `version` in `package.json` and `.claude-plugin/plugin.json`, update `CHANGELOG.md`, and publish a GitHub
-release; the publish workflow runs the tests and publishes to npm.
+release; the publish workflow runs the tests and publishes to npm through npm trusted publishing (no token).

@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Cache map data
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mapcast
+          key: mapcast-data-v1
+      - run: npm ci
+      - run: npm test
+      - name: Install Chromium and ffmpeg
+        run: |
+          npx playwright install --with-deps chromium-headless-shell
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Render smoke test
+        run: |
+          node bin/mapcast.js render examples/india.json -o out/india.png
+          echo '{"duration": 1, "highlights": [{"region": "California"}]}' | node bin/mapcast.js render - -o out/california.mp4
+          echo '{"duration": 3, "camera": "globe", "highlights": [{"country": "Brazil"}]}' | node bin/mapcast.js render - -o out/globe.png --at 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: renders-node${{ matrix.node }}
+          path: out/

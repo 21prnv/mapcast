@@ -2,7 +2,18 @@
   "name": "mapcast",
   "version": "0.1.0",
   "description": "Animated map videos and images: highlight countries on satellite imagery or paper maps with borders, flags, labels, capitals and data colours.",
-  "author": { "name": "mapcast contributors" },
+  "author": {
+    "name": "mapcast contributors"
+  },
   "license": "MIT",
-  "keywords": ["map", "animation", "video", "satellite", "geography", "explainer"]
+  "keywords": [
+    "map",
+    "animation",
+    "video",
+    "satellite",
+    "geography",
+    "explainer"
+  ],
+  "homepage": "https://github.com/21prnv/mapcast",
+  "repository": "https://github.com/21prnv/mapcast"
 }

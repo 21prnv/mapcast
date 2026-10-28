@@ -1,19 +1,87 @@
 # mapcast
 
-Animated map videos and images from a tiny JSON scene. Highlight any country on real satellite imagery,
-with a tracing border, colour fill, glow and label, the way documentary and explainer channels do it.
-Free, open source and built so AI agents can drive it.
+**Animated map videos for explainers, documentaries and Shorts, from one line of JSON.**
+Highlight any country, state or province on real satellite imagery or an old paper map: tracing borders,
+flags, glow, labels, capitals, data colours, a 3D globe dive and camera flights between countries.
+Free, open source, and built for AI agents to drive.
+
+[![npm](https://img.shields.io/npm/v/mapcast)](https://www.npmjs.com/package/mapcast)
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
+![mapcast showcase: globe dive into India, France flag, paper map of Italy, unemployment data map, flight to Turkey](docs/showcase.gif)
+
+<sub>Full-quality version: [docs/showcase.mp4](docs/showcase.mp4)</sub>
 
 ```bash
 npx mapcast quick India -o india.mp4
-npx mapcast quick "United States" --style highlight --color yellow -o usa.png
-npx mapcast quick France Spain Germany --camera zoom-in -o europe.mp4
-npx mapcast quick France --style flag -o france.mp4
-npx mapcast quick Brazil --camera globe -o brazil.mp4         # dive in from a spinning Earth
-npx mapcast quick India France Japan --camera fly -o tour.mp4  # fly from country to country
 ```
 
-Every example in [`examples/`](examples) renders as-is: `mapcast render examples/france-flag.json -o france.mp4`.
+That is the whole setup. The first run downloads Chromium and map data once (both cached); videos also need
+[ffmpeg](https://ffmpeg.org/download.html).
+
+## Ask your AI for it
+
+mapcast is made to be driven by AI tools: you describe the map, the agent writes the scene, mapcast renders it.
+
+> "Make a YouTube Short that spins the globe and lands on Brazil with its flag."
+> "Old parchment map of Turkey, zooming in, with Istanbul marked."
+> "Colour these countries by unemployment: Spain 11.4, Greece 9.8, Germany 3.4."
+
+**Claude Code** (skill and MCP server in one install):
+
+```
+/plugin marketplace add 21prnv/mapcast
+/plugin install mapcast@mapcast
+```
+
+**Claude Desktop, Cursor, Windsurf, Codex or any MCP client:** add this to the client's MCP config.
+
+```json
+{
+  "mcpServers": {
+    "mapcast": { "command": "npx", "args": ["-y", "mapcast", "mcp"] }
+  }
+}
+```
+
+The server offers `render_map` (saves the video or image and returns a preview of the final frame, so the agent
+can check its work) and `preview_map` (one frame, to check a scene before rendering). Every option is described
+in the tool schema.
+
+**Agents that read `SKILL.md` skills:** `npx skills add 21prnv/mapcast`. The skill is in
+[`skills/mapcast`](skills/mapcast), with [27 worked request-to-scene examples](skills/mapcast/references/examples.md).
+
+## What it can do
+
+![Gallery: globe, India, France flag, paper Italy, data map, Turkey](docs/gallery.jpg)
+
+- **Styles:** colour tint that keeps the terrain visible, spotlight (rest of the world turns grey), outline, or the
+  country's flag laid over its land.
+- **Basemaps:** NASA Blue Marble and Sentinel-2 satellite imagery, or an old parchment map with engraved coasts.
+- **Cameras:** slow push-in, zoom in from a wide view, dive from a spinning 3D globe, fly from country to country.
+- **Places:** every country by name or ISO code, plus 4,500 states and provinces (`"California"`, `"IN-MH"`), with
+  capitals or any city marked.
+- **Data maps:** colour countries by a number with a legend, with names and values on the map.
+- **Formats:** MP4, GIF, PNG, JPG in 16:9, 9:16, 1:1 or 4:5.
+- **Disputed borders:** drawn the way the highlighted country officially draws them, or a neutral view on request.
+
+## Command line
+
+```bash
+npx mapcast quick "United States" --style highlight --color yellow -o usa.png
+npx mapcast quick France --style flag -o france.mp4
+npx mapcast quick Brazil --camera globe -o brazil.mp4          # dive in from a spinning Earth
+npx mapcast quick India France Japan --camera fly -o tour.mp4   # fly from country to country
+npx mapcast quick Italy --basemap paper -o italy.mp4
+
+npx mapcast render scene.json -o out.mp4        # any scene; .mp4, .gif, .png or .jpg
+npx mapcast render scene.json -o out.png --at 1.2
+cat scene.json | npx mapcast render - -o out.gif
+npx mapcast schema                              # the scene format as JSON Schema
+npx mapcast mcp                                 # MCP server on stdio
+```
+
+Every file in [`examples/`](examples) renders as-is.
 
 ## Scene format
 
@@ -40,7 +108,7 @@ Every example in [`examples/`](examples) renders as-is: `mapcast render examples
 | `effects.vignette` | 0 to 1 | `0.45` |
 | `effects.blur` | 0 to 1: soft-focus edges, like a camera lens | `0` |
 | `effects.grid` | `true` or `{ "step", "color", "opacity" }`: lat/long grid over the sea only | off |
-| `effects.borders` | `true`: thin borders of neighbouring countries | on for `paper` |
+| `effects.borders` | `true`: thin borders of neighbouring countries | on for `paper` and states |
 | `labelAnim` | default label animation for every highlight | `rise` |
 
 Each highlight:
@@ -79,57 +147,15 @@ Colour countries by a number, with a legend:
 Set `"labels"` to `"name"`, `"value"` (the number with `prefix`/`unit`) or `"both"` to label each country,
 and `min`/`max` to fix the colour range. A highlight's `label` can have a second line: `"INDIA\n1.4 BILLION"`.
 
-Render it:
+## How it works
 
-```bash
-mapcast render scene.json -o out.mp4     # video
-mapcast render scene.json -o out.png     # still of the final frame
-mapcast render scene.json -o out.png --at 1.2
-cat scene.json | mapcast render - -o out.gif
-```
+A scene is resolved against [Natural Earth](https://www.naturalearthdata.com) borders, the imagery tiles the camera
+path needs are fetched and cached, and a headless Chromium draws each frame on a canvas (WebGL for the globe).
+Frames are piped to ffmpeg. A 5 second 1080p clip takes about 15 seconds on a laptop.
 
-## Use it from AI tools
+## Credits and licence
 
-mapcast ships three ways in. All of them render with the same engine and the same scene format.
+MIT. Map data, imagery and font licences are in [NOTICE.md](NOTICE.md). Satellite imagery needs a credit line
+wherever you publish; mapcast prints the exact line after every render.
 
-**Claude Code plugin** (skill + MCP server in one install):
-
-```
-/plugin marketplace add <owner>/mapcast
-/plugin install mapcast@mapcast
-```
-
-Then just ask: "make a YouTube Short of Japan with its flag" or "old map of Egypt with Cairo marked".
-
-**MCP server** for Claude Desktop, Cursor, Windsurf, Codex and any other MCP client. Add to the client's MCP config:
-
-```json
-{
-  "mcpServers": {
-    "mapcast": { "command": "npx", "args": ["-y", "mapcast", "mcp"] }
-  }
-}
-```
-
-It exposes `render_map` (saves the video or image and returns a preview of the final frame) and `preview_map`
-(one frame, to check a scene before rendering). The full scene schema is in the tool definitions.
-
-**Skill only** (for agents that read `SKILL.md` skills but run commands themselves):
-
-```bash
-npx skills add <owner>/mapcast
-```
-
-The skill lives in [`skills/mapcast`](skills/mapcast), with [27 worked request-to-scene examples](skills/mapcast/references/examples.md).
-
-## Requirements
-
-Node 20+, `ffmpeg` on your PATH, and Chromium for Playwright (`npx playwright install chromium`).
-Map data downloads once and is cached in `~/.cache/mapcast`.
-
-`npm test` checks every example scene (including the skill's) against the schema and resolves every country and city.
-
-## Licence
-
-MIT. Map data and font licences are listed in [NOTICE.md](NOTICE.md); credit the imagery source that
-`mapcast` prints after each render.
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).

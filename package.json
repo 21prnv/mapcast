@@ -1,10 +1,15 @@
 {
   "name": "mapcast",
   "version": "0.1.0",
-  "description": "Animated map videos and images from a small JSON scene. Built for AI agents.",
+  "description": "Animated map videos and images for explainers and Shorts: highlight countries and states on satellite or paper maps, with flags, labels, data colours, a globe dive and camera flights. CLI, MCP server and AI skill.",
   "type": "module",
   "bin": {
     "mapcast": "bin/mapcast.js"
+  },
+  "exports": {
+    ".": "./src/render.js",
+    "./schema": "./src/schema.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "bin",
@@ -13,20 +18,44 @@
     "examples",
     "skills",
     ".claude-plugin",
-    ".mcp.json"
+    ".mcp.json",
+    "NOTICE.md"
   ],
   "engines": {
     "node": ">=20"
   },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "showcase": "node scripts/build-showcase.mjs",
+    "docs:sync": "node scripts/sync-skill-docs.mjs",
+    "prepublishOnly": "npm run docs:sync && npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21prnv/mapcast.git"
+  },
+  "homepage": "https://github.com/21prnv/mapcast#readme",
+  "bugs": {
+    "url": "https://github.com/21prnv/mapcast/issues"
+  },
   "license": "MIT",
   "keywords": [
     "map",
+    "maps",
     "animation",
     "video",
     "satellite",
+    "geography",
+    "explainer",
+    "youtube",
+    "shorts",
+    "globe",
+    "choropleth",
+    "mcp",
+    "mcp-server",
     "claude",
     "skill",
-    "mcp"
+    "ai-agent"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
@@ -35,8 +64,5 @@
   },
   "devDependencies": {
     "ajv": "^8.20.0"
-  },
-  "scripts": {
-    "test": "node --test test/*.test.js"
   }
 }

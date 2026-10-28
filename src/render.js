@@ -64,8 +64,27 @@ export async function prepare(sceneInput) {
   return { ...scene, basemap, countries, context };
 }
 
+// Launch headless Chromium, downloading it on first use so `npx mapcast` works with no setup step.
+async function launchBrowser() {
+  const opts = { args: ['--disable-web-security'] };
+  try {
+    return await chromium.launch(opts);
+  } catch (e) {
+    if (!/Executable doesn't exist|browserType.launch: .*install/i.test(e.message)) throw e;
+    console.error('mapcast: downloading Chromium for rendering (one time, about 100 MB)...');
+    const cli = join(dirname(fileURLToPath(import.meta.resolve('playwright/package.json'))), 'cli.js');
+    await new Promise((res, rej) => {
+      // stdout is reserved for the MCP protocol, so the installer's output goes to stderr.
+      const p = spawn(process.execPath, [cli, 'install', 'chromium-headless-shell'], { stdio: ['ignore', 2, 2] });
+      p.on('error', rej);
+      p.on('close', (code) => (code === 0 ? res() : rej(new Error('Chromium download failed. Run "npx playwright install chromium-headless-shell" and try again.'))));
+    });
+    return chromium.launch(opts);
+  }
+}
+
 export async function openPage(payload) {
-  const browser = await chromium.launch({ args: ['--disable-web-security'] });
+  const browser = await launchBrowser();
   const page = await browser.newPage({ viewport: { width: payload.width, height: payload.height }, deviceScaleFactor: 1 });
   await page.route(`${ORIGIN}/**`, async (route) => {
     let path = new URL(route.request().url()).pathname;
@@ -105,7 +124,7 @@ function ffmpeg(args) {
   let err = '';
   proc.stderr.on('data', (d) => { err = (err + d).slice(-4000); });
   const done = new Promise((resolve, reject) => {
-    proc.on('error', () => reject(new Error('ffmpeg not found. Install it (brew install ffmpeg / apt install ffmpeg) or set FFMPEG_PATH.')));
+    proc.on('error', () => reject(new Error('ffmpeg is needed for .mp4 and .gif output and was not found. Install it (macOS: brew install ffmpeg, Ubuntu/Debian: sudo apt install ffmpeg, Windows: winget install ffmpeg) or set FFMPEG_PATH. Stills (.png, .jpg) work without it.')));
     proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg failed:\n${err}`))));
   });
   return { proc, done };

@@ -23,7 +23,7 @@
 | `effects.vignette` | 0 to 1 | `0.45` |
 | `effects.blur` | 0 to 1: soft-focus edges, like a camera lens | `0` |
 | `effects.grid` | `true` or `{ "step", "color", "opacity" }`: lat/long grid over the sea only | off |
-| `effects.borders` | `true`: thin borders of neighbouring countries | on for `paper` |
+| `effects.borders` | `true`: thin borders of neighbouring countries | on for `paper` and states |
 | `labelAnim` | default label animation for every highlight | `rise` |
 
 Each highlight:

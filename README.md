@@ -9,6 +9,8 @@ npx mapcast quick India -o india.mp4
 npx mapcast quick "United States" --style highlight --color yellow -o usa.png
 npx mapcast quick France Spain Germany --camera zoom-in -o europe.mp4
 npx mapcast quick France --style flag -o france.mp4
+npx mapcast quick Brazil --camera globe -o brazil.mp4         # dive in from a spinning Earth
+npx mapcast quick India France Japan --camera fly -o tour.mp4  # fly from country to country
 ```
 
 Every example in [`examples/`](examples) renders as-is: `mapcast render examples/france-flag.json -o france.mp4`.
@@ -29,9 +31,9 @@ Every example in [`examples/`](examples) renders as-is: `mapcast render examples
 | Field | Values | Default |
 |---|---|---|
 | `aspect` | `16:9`, `9:16`, `1:1`, `4:5` (or set `width`/`height`) | `16:9` |
-| `duration` | seconds | `5` |
+| `duration` | seconds | `5` (`7` for `globe`, `1 + 3` per country for `fly`) |
 | `fps` | frames per second | `30` |
-| `camera` | `push-in`, `zoom-in`, `static`, or `{ "move", "fill", "from" }` | `push-in` |
+| `camera` | `push-in`, `zoom-in`, `globe` (3D Earth dive), `fly` (country to country), `static`, or `{ "move", "fill", "from" }` | `push-in` |
 | `basemap` | `satellite`, `bluemarble`, `sentinel`, `paper` (old parchment map) | `satellite` |
 | `pov` | `auto` (the country's own official borders), `default`, or a code like `ind`, `chn`, `pak` | `auto` |
 | `effects.grade` | `natural`, `muted`, `mono` | `natural` |
@@ -45,7 +47,8 @@ Each highlight:
 
 | Field | Values | Default |
 |---|---|---|
-| `country` | name (`"India"`) or ISO code (`"IN"`, `"IND"`) | required |
+| `country` | name (`"India"`) or ISO code (`"IN"`, `"IND"`) | `country` or `region` required |
+| `region` | a state or province: `"California"`, `"Bavaria"`, `"US-CA"`, `"IN-MH"` | |
 | `style` | `solid` (tinted fill), `highlight` (rest of the world goes grey), `outline`, `flag` (the country's flag over the terrain) | `solid` |
 | `color` | any CSS colour or `red`, `yellow`, `blue`, ... | a distinct colour per country |
 | `label` | text, or `false` for none | the country name |
@@ -53,7 +56,7 @@ Each highlight:
 | `labelAnim` | `rise`, `type` (typewriter), `spread` (letters close in), `slide`, `pop` | `rise` |
 | `labelSize` | multiplier on the automatic label size, e.g. `0.7` or `1.3` | `1` |
 | `labelFont` | `sans`, `serif`, or any font name | `sans` (`serif` on paper) |
-| `capital` | `true` for the capital, or a city name like `"Mumbai"`: pulsing dot with its name | off |
+| `capital` | `true` for the capital (a state's own capital for `region`), or a city name like `"Mumbai"` | off |
 | `start` | seconds when this country starts animating | staggered automatically |
 
 ## Data maps
@@ -117,7 +120,7 @@ It exposes `render_map` (saves the video or image and returns a preview of the f
 npx skills add <owner>/mapcast
 ```
 
-The skill lives in [`skills/mapcast`](skills/mapcast), with [22 worked request-to-scene examples](skills/mapcast/references/examples.md).
+The skill lives in [`skills/mapcast`](skills/mapcast), with [27 worked request-to-scene examples](skills/mapcast/references/examples.md).
 
 ## Requirements
 

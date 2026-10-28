@@ -43,7 +43,10 @@ Map the request to fields:
 | "everything else dark/grey", "spotlight" | `style: "highlight"` |
 | "just the outline/border" | `style: "outline"` |
 | "old map", "history", "parchment", "medieval" | `basemap: "paper"` |
-| "zoom in from space / from the world" | `camera: "zoom-in"` |
+| "from space", "spinning globe", "dive in from Earth" | `camera: "globe"` (7 s default) |
+| "zoom in from far away / from the region" | `camera: "zoom-in"` |
+| "tour", "travel from X to Y", "visit A then B" | `camera: "fly"`, highlights in visiting order |
+| a state or province ("California", "Kerala") | `region: "California"` instead of `country` |
 | "no movement" | `camera: "static"` |
 | Shorts, Reels, TikTok, vertical, phone | `aspect: "9:16"` |
 | Instagram post | `aspect: "4:5"` (or `"1:1"`) |
@@ -57,7 +60,7 @@ Map the request to fields:
 | "compare by GDP/population/..." | `data: { values, title, unit }` (see below) |
 | "show neighbouring borders" | `effects: { "borders": true }` |
 
-Full field list: [references/scene-format.md](references/scene-format.md). Worked examples for 22 common requests:
+Full field list: [references/scene-format.md](references/scene-format.md). Worked examples for 27 common requests:
 [references/examples.md](references/examples.md). Read the examples file when a request combines several options.
 
 ### Data maps
@@ -109,6 +112,10 @@ For data maps, the data source is separate: name where the numbers came from so 
   the neutral choice.
 - **Country names:** common names and ISO codes work ("UK", "USA", "South Korea", "IN"). On "Unknown country",
   try the official name or the ISO 3-letter code.
-- **Not supported yet:** states/provinces, cities as areas, routes or arrows between places, a 3D globe, custom
-  basemaps or video backgrounds. Say so plainly rather than approximating with something else.
+- **States and provinces:** `region` takes a name in English or the local language ("Bavaria" or "Bayern") or an
+  ISO 3166-2 code ("US-CA"). If a name exists in several countries, add `country`. Neighbouring state lines are
+  drawn automatically. State borders are drawn as each country controls them, so `pov` does not change them.
+- **Globe:** it uses satellite imagery; with `basemap: "paper"` mapcast zooms in from a wide view instead.
+- **Not supported yet:** districts and cities as areas, routes or arrows between places, custom basemaps or video
+  backgrounds. Say so plainly rather than approximating with something else.
 - Errors from mapcast are written to be fixed: read the message, correct the scene, retry.

@@ -1,7 +1,7 @@
 // Scene format: what an AI (or a person) writes. Everything except `highlights` (or `data`) is optional.
 
 export const STYLES = ['solid', 'highlight', 'outline', 'flag'];
-export const MOVES = ['push-in', 'zoom-in', 'static'];
+export const MOVES = ['push-in', 'zoom-in', 'static', 'fly', 'globe'];
 export const GRADES = ['natural', 'muted', 'mono'];
 export const LABEL_ANIMS = ['rise', 'type', 'spread', 'slide', 'pop'];
 export const SCHEMES = {
@@ -84,20 +84,22 @@ export function normalizeScene(input) {
   let [width, height] = SIZES[input.aspect ?? '16:9'] ?? fail(`aspect must be one of ${Object.keys(SIZES).join(', ')}`);
   width = input.width ?? width;
   height = input.height ?? height;
-  const duration = input.duration ?? 5;
-  if (!(duration > 0 && duration <= 120)) fail('duration must be between 0 and 120 seconds');
-
   const basemap = input.basemap ?? 'satellite';
   const paper = basemap === 'paper';
   const cam = typeof input.camera === 'string' ? { move: input.camera } : input.camera ?? {};
-  const move = oneOf(cam.move ?? 'push-in', MOVES, 'camera.move');
+  let move = oneOf(cam.move ?? 'push-in', MOVES, 'camera.move');
+  // The globe is textured with satellite imagery; a paper map zooms in from a wide view instead.
+  if (move === 'globe' && paper) move = 'zoom-in';
+  // Flights need time per stop, and the globe dive needs time before the country appears.
+  const duration = input.duration ?? (move === 'fly' ? 1 + 3 * list.length : move === 'globe' ? 7 : 5);
+  if (!(duration > 0 && duration <= 120)) fail('duration must be between 0 and 120 seconds');
 
   const effects = input.effects ?? {};
   const grid = effects.grid === true ? {} : effects.grid || null;
 
   const highlights = list.map((h, i) => {
     if (typeof h === 'string') h = { country: h };
-    if (!h.country) fail(`highlights[${i}] needs "country"`);
+    if (!h.country && !h.region) fail(`highlights[${i}] needs "country" (or "region" for a state/province)`);
     const style = oneOf(h.style ?? input.style ?? 'solid', STYLES, `highlights[${i}].style`);
     const palette = paper ? PAPER_PALETTE : PALETTE;
     const fill = color(h.color, style === 'highlight' && i === 0 ? NAMED_COLORS.yellow : palette[i % palette.length]);
@@ -110,6 +112,7 @@ export function normalizeScene(input) {
     };
     return {
       country: h.country,
+      region: h.region,
       style,
       color: fill,
       opacity: h.opacity ?? (paper ? 0.75 : 0.92),
@@ -136,7 +139,8 @@ export function normalizeScene(input) {
       vignette: effects.vignette ?? (paper ? 0.3 : 0.45),
       blur: effects.blur ?? 0,
       grid: grid && { step: grid.step ?? null, color: color(grid.color, paper ? '#5a4630' : '#bcd8ff'), opacity: grid.opacity ?? 0.28 },
-      borders: effects.borders ?? paper,
+      // Neighbouring borders give context: always useful on paper and for states/provinces.
+      borders: effects.borders ?? (paper || highlights.some((h) => h.region)),
     },
     legend: fromData?.legend ?? null,
     highlights,

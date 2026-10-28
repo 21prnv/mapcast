@@ -4,7 +4,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { normalizeScene } from './scene.js';
-import { contextCountries, findCity, prepareCountry, project, resolveCountries } from './geo.js';
+import { contextCountries, findCity, loadRegions, prepareCountry, project, resolveHighlights } from './geo.js';
 import { cachedFetch } from './cache.js';
 import { attribution, fetchTile, getBasemap } from './tiles.js';
 
@@ -21,18 +21,18 @@ function sizedSvg(buf) {
 
 export async function prepare(sceneInput) {
   const scene = normalizeScene(sceneInput);
-  const { all, matched } = await resolveCountries(scene.highlights.map((h) => h.country), scene.pov);
+  const { all, matched } = await resolveHighlights(scene.highlights, scene.pov);
   const countries = matched.map(prepareCountry);
 
   for (const [i, h] of scene.highlights.entries()) {
     const c = countries[i];
     h.label ??= c.name.toUpperCase();
     if (h.style === 'flag' && !c.iso2) {
-      console.warn(`warning: no flag code for ${c.name}; using a solid fill`);
+      console.warn(`warning: no flag for ${c.name}; using a solid fill`);
       h.style = 'solid';
     }
     if (h.capital) {
-      const city = await findCity(c.code, h.capital);
+      const city = await findCity(c.code, h.capital, c.region);
       if (!city) console.warn(`warning: could not find ${h.capital === true ? 'a capital' : `"${h.capital}"`} in ${c.name}`);
       else {
         const [lon, lat] = city.lonlat;
@@ -48,7 +48,14 @@ export async function prepare(sceneInput) {
     const span = Math.max(box[2] - box[0], box[3] - box[1]);
     const aspect = Math.max(scene.width / scene.height, scene.height / scene.width);
     const reach = span * (aspect / scene.camera.fill) * (scene.camera.move === 'zoom-in' ? 1 / scene.camera.from : 1.3);
-    context = contextCountries(all, [box[0] - reach, box[1] - reach, box[2] + reach, box[3] + reach], countries[0].centerLon, span / 1500);
+    const view = [box[0] - reach, box[1] - reach, box[2] + reach, box[3] + reach];
+    context = contextCountries(all, view, countries[0].centerLon, span / 1500);
+    // A state or province also gets its sibling subdivisions' borders (thin lines only, not the land mask).
+    const parents = new Set(countries.filter((c) => c.region).map((c) => c.code));
+    if (parents.size) {
+      const siblings = (await loadRegions()).filter((f) => parents.has(f.properties.adm0_a3));
+      context.push(...contextCountries(siblings, view, countries[0].centerLon, span / 1500).map((r) => ({ ...r, linesOnly: true })));
+    }
   }
 
   const basemap = scene.basemap === 'paper'

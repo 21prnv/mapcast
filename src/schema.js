@@ -6,10 +6,11 @@ const colorProp = (description) => ({ type: 'string', description: `${descriptio
 
 const highlight = {
   type: 'object',
-  required: ['country'],
+  anyOf: [{ required: ['country'] }, { required: ['region'] }],
   additionalProperties: false,
   properties: {
-    country: { type: 'string', description: 'Country name ("India", "United States") or ISO code ("IN", "IND").' },
+    country: { type: 'string', description: 'Country name ("India", "United States") or ISO code ("IN", "IND"). With "region", narrows which country the region is in.' },
+    region: { type: 'string', description: 'A state or province instead of a whole country: name ("California", "Maharashtra", "Bavaria") or ISO 3166-2 code ("US-CA", "IN-MH"). capital: true then marks the state capital.' },
     style: {
       type: 'string', enum: STYLES,
       description: 'solid: colour tint over the terrain. highlight: the country keeps colour while the rest of the world turns grey. outline: border only. flag: the national flag laid over the terrain.',
@@ -46,7 +47,7 @@ export const sceneSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    highlights: { type: 'array', minItems: 1, items: highlight, description: 'Countries to highlight, animated one after another.' },
+    highlights: { type: 'array', minItems: 1, items: highlight, description: 'Countries, states or provinces to highlight, animated one after another (with camera "fly", in the order visited).' },
     data: {
       type: 'object',
       description: 'Data map: colour countries by a number and show a legend. Can be combined with highlights.',
@@ -66,7 +67,7 @@ export const sceneSchema = {
     aspect: { type: 'string', enum: ['16:9', '9:16', '1:1', '4:5'], description: '16:9 for YouTube (default), 9:16 for Shorts/Reels/TikTok, 1:1 or 4:5 for feeds.' },
     width: { type: 'integer', minimum: 64, maximum: 4096 },
     height: { type: 'integer', minimum: 64, maximum: 4096 },
-    duration: { type: 'number', exclusiveMinimum: 0, maximum: 120, description: 'Seconds. Default 5.' },
+    duration: { type: 'number', exclusiveMinimum: 0, maximum: 120, description: 'Seconds. Default 5; 7 for the globe camera; 1 + 3 per country for fly.' },
     fps: { type: 'integer', minimum: 1, maximum: 60, description: 'Default 30.' },
     basemap: { type: 'string', enum: ['satellite', 'bluemarble', 'sentinel', 'paper'], description: 'satellite (default, NASA Blue Marble + Sentinel-2 close up), paper (old parchment map), bluemarble, sentinel.' },
     pov: { type: 'string', description: 'Whose official view of disputed borders to draw. "auto" (default) uses the highlighted country\'s own view; "default" is Natural Earth\'s; or a code like "ind", "chn", "pak".' },
@@ -79,7 +80,7 @@ export const sceneSchema = {
           from: { type: 'number', minimum: 0.01, maximum: 1, description: 'zoom-in only: starting zoom relative to the final shot. Default 0.2.' },
         },
       }],
-      description: 'push-in (default, slow drift closer), zoom-in (from a wide view down to the country), static.',
+      description: 'push-in (default, slow drift closer), zoom-in (from a wide view down to the country), globe (spinning 3D Earth that dives down onto the country), fly (visit each highlight in order, flying between them), static.',
     },
     style: { type: 'string', enum: STYLES, description: 'Default style for every highlight.' },
     labelAnim: { type: 'string', enum: LABEL_ANIMS, description: 'Default label animation for every highlight.' },

@@ -40,15 +40,45 @@ export function findCountry(features, query) {
   return hit;
 }
 
-// Pick the border view: the highlighted country's own official view when Natural Earth has one.
-export async function resolveCountries(queries, pov = 'auto') {
-  let features = await loadCountries('default');
+let regions;
+export async function loadRegions() {
+  if (regions) return regions;
+  const name = 'ne_10m_admin_1_states_provinces';
+  const buf = await cachedFetch(`${NE_BASE}${name}.geojson`, `natural-earth/${name}.geojson`);
+  regions = JSON.parse(buf.toString('utf8')).features;
+  return regions;
+}
+
+// States and provinces (Natural Earth admin-1): by name in English or locally ("Bavaria", "Bayern"),
+// alternate name, or ISO 3166-2 code ("US-CA", "IN-MH"). `countryCode` (ADM0_A3) narrows the search.
+export function findRegion(features, query, countryCode) {
+  const q = norm(query);
+  const pool = countryCode ? features.filter((f) => f.properties.adm0_a3 === countryCode) : features;
+  const names = (p) => [p.name, p.name_en, p.woe_name, p.gn_name, ...(p.name_alt ?? '').split('|')].map(norm);
+  const hit = pool.find((f) => norm(f.properties.iso_3166_2) === q)
+    || pool.find((f) => names(f.properties).includes(q))
+    || (countryCode && pool.find((f) => norm(f.properties.postal) === q))
+    || pool.find((f) => names(f.properties).some((n) => n.startsWith(q)));
+  if (!hit) throw new Error(`Unknown state or province "${query}"${countryCode ? ` in ${countryCode}` : ''}. Use its name ("California", "Maharashtra") or ISO code ("US-CA", "IN-MH").`);
+  return hit;
+}
+
+// Resolve every highlight to a country or region feature. Borders follow the highlighted country's own
+// official view when Natural Earth has one (pov "auto"), e.g. India's map shows all of Kashmir.
+export async function resolveHighlights(highlights, pov = 'auto') {
+  const base = await loadCountries('default');
+  const regionHits = await Promise.all(highlights.map(async (h) => {
+    if (!h.region) return null;
+    const code = h.country ? findCountry(base, h.country).properties.ADM0_A3 : undefined;
+    return findRegion(await loadRegions(), h.region, code);
+  }));
+  const codes = highlights.map((h, i) => (regionHits[i] ? regionHits[i].properties.adm0_a3 : findCountry(base, h.country).properties.ADM0_A3));
   if (pov === 'auto') {
-    const own = [...new Set(queries.map((q) => findCountry(features, q).properties.ADM0_A3.toLowerCase()))];
+    const own = [...new Set(codes.map((c) => c.toLowerCase()))];
     pov = own.length === 1 && POVS.includes(own[0]) ? own[0] : 'default';
   }
-  if (pov !== 'default') features = await loadCountries(pov);
-  return { all: features, matched: queries.map((q) => findCountry(features, q)) };
+  const all = pov === 'default' ? base : await loadCountries(pov);
+  return { all, matched: highlights.map((h, i) => regionHits[i] ?? findCountry(all, h.country)) };
 }
 
 // Web Mercator, in pixels of a 256px tile world at zoom 0.
@@ -82,12 +112,16 @@ async function loadPlaces() {
   return places;
 }
 
-// The capital by default, or a named city in that country. Returns { name, point } or null.
-export async function findCity(code, which = true) {
+// The capital by default (a region's own capital when `region` is given), or a named city in that country.
+// Returns { name, lonlat } or null.
+export async function findCity(code, which = true, region) {
   const all = (await loadPlaces()).filter((p) => p.adm0_a3 === code);
   const clean = (s) => s.replace(/\s+/g, ' ').trim();
   let hit;
-  if (which === true) {
+  if (which === true && region) {
+    const names = [region.name, region.name_en, region.woe_name].map(norm);
+    hit = all.filter((p) => /Admin-1 (region )?capital|Admin-0 capital/.test(p.featurecla) && names.includes(norm(p.adm1name))).sort((a, b) => b.pop_max - a.pop_max)[0];
+  } else if (which === true) {
     hit = all.filter((p) => p.featurecla === 'Admin-0 capital' && p.adm0cap === 1).sort((a, b) => b.pop_max - a.pop_max)[0];
   } else {
     const q = norm(which);
@@ -130,6 +164,20 @@ export function contextCountries(features, box, centerLon, tol) {
   return out;
 }
 
+// The horizontal run of land through (x, y): [left, right] of the interior span containing x.
+function chordAt(polygon, x, y) {
+  const xs = [];
+  for (const ring of polygon) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [x1, y1] = ring[j], [x2, y2] = ring[i];
+      if ((y1 > y) !== (y2 > y)) xs.push(x1 + ((y - y1) / (y2 - y1)) * (x2 - x1));
+    }
+  }
+  xs.sort((a, b) => a - b);
+  for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i] <= x && x <= xs[i + 1]) return [xs[i], xs[i + 1]];
+  return null;
+}
+
 // Turn a country feature into projected polygons plus framing hints. Longitudes are unwrapped
 // around the mainland so countries crossing the antimeridian (USA, Russia, Fiji) stay in one piece.
 export function prepareCountry(feature) {
@@ -151,17 +199,24 @@ export function prepareCountry(feature) {
     const near = b[0] < mb[2] + m && b[2] > mb[0] - m && b[1] < mb[3] + m && b[3] > mb[1] - m;
     return near && ringArea(p[0]) > mainArea * 0.002;
   });
-  const lp = polylabel(main, Math.max(0.001, span / 400));
-  const iso2 = [feature.properties.ISO_A2_EH, feature.properties.ISO_A2].find((c) => c && c !== '-99');
+  // polylabel finds the point deepest inside the shape; the label then centres on the stretch of land along
+  // that line, so a wide word stays inside the border instead of spilling over the nearer edge.
+  const lp0 = polylabel(main, Math.max(0.001, span / 400));
+  const chord = chordAt(main, lp0[0], lp0[1]);
+  const lp = chord ? Object.assign([(chord[0] + chord[1]) / 2, lp0[1]], { distance: lp0.distance }) : lp0;
+  const p = feature.properties;
+  const isRegion = p.adm1_code != null;
+  const iso2 = isRegion ? null : [p.ISO_A2_EH, p.ISO_A2].find((c) => c && c !== '-99');
   return {
-    name: feature.properties.NAME,
-    code: feature.properties.ADM0_A3,
+    name: isRegion ? p.name_en || p.name : p.NAME,
+    code: isRegion ? p.adm0_a3 : p.ADM0_A3,
+    region: isRegion ? { name: p.name, name_en: p.name_en, woe_name: p.woe_name } : null,
     iso2: iso2?.toLowerCase(),
     centerLon: center,
     polygons,
     frameBox: bboxOf(framed.flat()),
     fullBox: bboxOf(polygons.flat()),
     labelPoint: [lp[0], lp[1]],
-    labelWidth: Math.min(mb[2] - mb[0], (lp.distance || span / 6) * 3.2),
+    labelWidth: chord ? (chord[1] - chord[0]) * 0.92 : Math.min(mb[2] - mb[0], (lp.distance || span / 6) * 3.2),
   };
 }

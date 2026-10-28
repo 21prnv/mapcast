@@ -37,12 +37,42 @@ function unionBox(boxes) {
   return boxes.reduce((b, c) => [Math.min(b[0], c[0]), Math.min(b[1], c[1]), Math.max(b[2], c[2]), Math.max(b[3], c[3])], [Infinity, Infinity, -Infinity, -Infinity]);
 }
 
+const fitScale = (box, fill) => Math.min((W * fill) / Math.max(box[2] - box[0], 1e-6), (H * fill) / Math.max(box[3] - box[1], 1e-6));
+const center = (box) => [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+
+// Smooth zoom-and-pan between two views (van Wijk & Nuij, 2003): pulls back, travels, zooms in.
+// Views are [cx, cy, w] with w the view width in world units. Returns { at(u), length }.
+function flyPath([ux0, uy0, w0], [ux1, uy1, w1], rho = 1.4) {
+  const dx = ux1 - ux0, dy = uy1 - uy0, d2 = dx * dx + dy * dy, rho2 = rho * rho, rho4 = rho2 * rho2;
+  if (d2 < 1e-12) {
+    const S = Math.log(w1 / w0) / rho;
+    return { length: Math.abs(S), at: (u) => [ux0, uy0, w0 * Math.exp(rho * u * S)] };
+  }
+  const d1 = Math.sqrt(d2);
+  const b0 = (w1 * w1 - w0 * w0 + rho4 * d2) / (2 * w0 * rho2 * d1);
+  const b1 = (w1 * w1 - w0 * w0 - rho4 * d2) / (2 * w1 * rho2 * d1);
+  const r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0);
+  const r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
+  const S = (r1 - r0) / rho;
+  return {
+    length: S,
+    at: (u) => {
+      const s = u * S, c0 = Math.cosh(r0);
+      const q = (w0 / (rho2 * d1)) * (c0 * Math.tanh(rho * s + r0) - Math.sinh(r0));
+      return [ux0 + q * dx, uy0 + q * dy, (w0 * c0) / Math.cosh(rho * s + r0)];
+    },
+  };
+}
+
+// Returns camera(t) -> { cx, cy, k }. Moves that decide when each country appears also fill
+// `cameraPlan.starts`; the globe move fills `cameraPlan.globe`.
+const cameraPlan = { starts: null, globe: null };
+
 function buildCamera() {
   const box = unionBox(S.countries.map((c) => c.frameBox));
-  const cx = (box[0] + box[2]) / 2;
-  const cy = (box[1] + box[3]) / 2;
+  const [cx, cy] = center(box);
   const fill = S.camera.fill;
-  const kFit = Math.min((W * fill) / Math.max(box[2] - box[0], 1e-6), (H * fill) / Math.max(box[3] - box[1], 1e-6));
+  const kFit = fitScale(box, fill);
   const D = S.duration;
   const drift = (box[2] - box[0]) * 0.02;
   const moves = {
@@ -56,8 +86,68 @@ function buildCamera() {
       const settle = clamp01((t - D * 0.45) / (D * 0.55));
       return { cx, cy, k: kFit * Math.exp(lerp(Math.log(S.camera.from), 0, p)) * lerp(1, 1.04, settle) };
     },
+    fly: () => buildFly(),
+    globe: () => buildGlobe(cx, cy, kFit),
   };
-  return moves[S.camera.move];
+  return S.camera.move === 'fly' || S.camera.move === 'globe' ? moves[S.camera.move]() : moves[S.camera.move];
+}
+
+// Visit each highlight in order: hold on it while it animates, then fly to the next.
+function buildFly() {
+  const D = S.duration;
+  const views = S.countries.map((c) => [...center(c.frameBox), W / fitScale(c.frameBox, S.camera.fill)]);
+  const HOLD = 2.4;
+  const legs = views.slice(1).map((v, i) => flyPath([views[i][0], views[i][1], views[i][2] / 1.04], v));
+  const travel = legs.map((l) => Math.max(1.2, Math.min(3, Math.abs(l.length) * 0.75)));
+  const scale = D / (HOLD * views.length + travel.reduce((a, b) => a + b, 0));
+  const segs = [];
+  let t = 0;
+  views.forEach((v, i) => {
+    segs.push({ kind: 'hold', t0: t, t1: (t += HOLD * scale), v });
+    if (legs[i]) segs.push({ kind: 'fly', t0: t, t1: (t += travel[i] * scale), leg: legs[i] });
+  });
+  cameraPlan.starts = segs.filter((s) => s.kind === 'hold').map((s) => s.t0 + 0.12 * (s.t1 - s.t0));
+  cameraPlan.hold = HOLD * scale;
+  return (time) => {
+    const seg = segs.find((s) => time < s.t1) ?? segs[segs.length - 1];
+    const u = clamp01((time - seg.t0) / (seg.t1 - seg.t0));
+    const [x, y, w] = seg.kind === 'hold' ? [seg.v[0], seg.v[1], seg.v[2] / lerp(1, 1.04, easeInOut(u))] : seg.leg.at(easeInOut(u));
+    return { cx: x, cy: y, k: W / w };
+  };
+}
+
+// Spin the Earth in space, dive towards the target, then hand over to the flat map at matching scale.
+const GLOBE_ZOOM = 4; // world texture: 16x16 tiles = 4096 px
+function buildGlobe(cx, cy, kFit) {
+  const D = S.duration;
+  const lon = (cx / 256) * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * cy) / 256))) * 180) / Math.PI;
+  // The flat map takes over where the world texture is still sharp, then keeps zooming to the final shot.
+  const kHand = Math.min(kFit * 0.6, 2 ** GLOBE_ZOOM * 1.3);
+  const rHand = (kHand * 128) / (Math.PI * Math.cos((lat * Math.PI) / 180));
+  const r0 = Math.min(W, H) * 0.42;
+  const tDive = D * 0.18, tHand = D * 0.42, tFade = D * 0.07, tLand = D * 0.68;
+  const flat = (t) => {
+    const p = easeOut(clamp01((t - tHand) / (tLand - tHand)));
+    const settle = clamp01((t - tLand) / (D - tLand));
+    return { cx, cy, k: Math.exp(lerp(Math.log(kHand), Math.log(kFit), p)) * lerp(1, 1.04, settle) };
+  };
+  const pxPerRadian = 128 / (Math.PI * Math.cos((lat * Math.PI) / 180));
+  cameraPlan.starts = S.countries.map((_, i) => tLand - D * 0.06 + i * 0.4);
+  cameraPlan.globe = {
+    at: (t) => {
+      const spin = easeOut(clamp01(t / tHand));
+      const dive = easeInOut(clamp01((t - tDive) / (tHand - tDive)));
+      return {
+        lon: lon - 70 * (1 - spin),
+        lat: lat * lerp(0.35, 1, spin),
+        // After the hand-off the globe keeps the flat map's scale so the cross-fade lines up.
+        r: t <= tHand ? Math.exp(lerp(Math.log(r0), Math.log(rHand), dive)) : flat(t).k * pxPerRadian,
+        alpha: 1 - clamp01((t - tHand) / tFade),
+      };
+    },
+  };
+  return flat;
 }
 
 const worldTransform = (c) => [c.k, 0, 0, c.k, W / 2 - c.cx * c.k, H / 2 - c.cy * c.k];
@@ -74,10 +164,12 @@ function loadImage(src) {
   });
 }
 
-// Build the image pyramid the camera path needs: one mosaic per zoom level, each only as large as
-// the view is while that level is the sharpest needed one. Tiles are downloaded; paper is drawn.
+// Build the image pyramid the camera path needs: per zoom level, mosaics covering the views that need
+// that level. Views far apart (a flight between countries) get separate mosaics instead of one huge one.
+// Tiles are downloaded; paper is drawn.
 async function buildMosaics() {
-  const samples = Array.from({ length: 61 }, (_, i) => camera((S.duration * i) / 60));
+  const count = Math.max(61, Math.ceil(S.duration * 20));
+  const samples = Array.from({ length: count }, (_, i) => camera((S.duration * i) / (count - 1)));
   const ks = samples.map((s) => s.k);
   const paper = S.basemap.kind === 'paper';
   const maxZoom = paper ? 20 : S.basemap.maxZoom;
@@ -86,38 +178,57 @@ async function buildMosaics() {
   const zMax = zFor(Math.max(...ks));
   const jobs = [];
   for (let z = zMin; z <= zMax; z++) {
-    const view = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const s of samples) {
-      if (z > zMin && zFor(s.k) < z) continue;
-      const hw = W / 2 / s.k;
-      const hh = H / 2 / s.k;
-      view[0] = Math.min(view[0], s.cx - hw); view[1] = Math.min(view[1], s.cy - hh);
-      view[2] = Math.max(view[2], s.cx + hw); view[3] = Math.max(view[3], s.cy + hh);
-    }
-    const n = 2 ** z; // tile pixels per zoom-0 unit
-    const tx0 = Math.floor((view[0] * n) / 256);
-    const ty0 = Math.max(0, Math.floor((view[1] * n) / 256));
-    const tx1 = Math.floor((view[2] * n) / 256);
-    const ty1 = Math.min(n - 1, Math.floor((view[3] * n) / 256));
-    const mosaic = new OffscreenCanvas((tx1 - tx0 + 1) * 256, (ty1 - ty0 + 1) * 256);
-    const mctx = mosaic.getContext('2d');
-    const x0 = (tx0 * 256) / n, y0 = (ty0 * 256) / n;
-    levels.push({ z, x0, y0, scale: 1 / n, img: mosaic });
-    if (paper) {
-      mctx.setTransform(n, 0, 0, n, -x0 * n, -y0 * n);
-      drawPaperWorld(mctx, n, [x0, y0, x0 + mosaic.width / n, y0 + mosaic.height / n]);
-      continue;
-    }
-    for (let ty = ty0; ty <= ty1; ty++) {
-      for (let tx = tx0; tx <= tx1; tx++) {
-        jobs.push(loadImage(`/tile/${S.basemap.name}/${z}/${tx}/${ty}.jpg`).then((img) => {
-          if (img) mctx.drawImage(img, (tx - tx0) * 256, (ty - ty0) * 256);
-          else missing++;
-        }));
-      }
-    }
+    const boxes = samples
+      .filter((s) => z === zMin || zFor(s.k) >= z)
+      .map((s) => [s.cx - W / 2 / s.k, s.cy - H / 2 / s.k, s.cx + W / 2 / s.k, s.cy + H / 2 / s.k]);
+    for (const view of mergeBoxes(boxes)) jobs.push(...buildMosaic(z, view, paper));
   }
   await Promise.all(jobs);
+  levels.sort((a, b) => a.z - b.z);
+}
+
+// Union overlapping boxes until none overlap.
+function mergeBoxes(boxes) {
+  const out = [];
+  for (let b of boxes) {
+    for (let i = out.length - 1; i >= 0; i--) {
+      const o = out[i];
+      if (b[0] <= o[2] && o[0] <= b[2] && b[1] <= o[3] && o[1] <= b[3]) {
+        b = [Math.min(b[0], o[0]), Math.min(b[1], o[1]), Math.max(b[2], o[2]), Math.max(b[3], o[3])];
+        out.splice(i, 1);
+        i = out.length;
+      }
+    }
+    out.push(b);
+  }
+  return out;
+}
+
+function buildMosaic(z, view, paper) {
+  const n = 2 ** z; // tile pixels per zoom-0 unit
+  const tx0 = Math.floor((view[0] * n) / 256);
+  const ty0 = Math.max(0, Math.floor((view[1] * n) / 256));
+  const tx1 = Math.floor((view[2] * n) / 256);
+  const ty1 = Math.min(n - 1, Math.floor((view[3] * n) / 256));
+  const mosaic = new OffscreenCanvas((tx1 - tx0 + 1) * 256, (ty1 - ty0 + 1) * 256);
+  const mctx = mosaic.getContext('2d');
+  const x0 = (tx0 * 256) / n, y0 = (ty0 * 256) / n;
+  levels.push({ z, x0, y0, scale: 1 / n, img: mosaic });
+  if (paper) {
+    mctx.setTransform(n, 0, 0, n, -x0 * n, -y0 * n);
+    drawPaperWorld(mctx, n, [x0, y0, x0 + mosaic.width / n, y0 + mosaic.height / n]);
+    return [];
+  }
+  const jobs = [];
+  for (let ty = ty0; ty <= ty1; ty++) {
+    for (let tx = tx0; tx <= tx1; tx++) {
+      jobs.push(loadImage(`/tile/${S.basemap.name}/${z}/${tx}/${ty}.jpg`).then((img) => {
+        if (img) mctx.drawImage(img, (tx - tx0) * 256, (ty - ty0) * 256);
+        else missing++;
+      }));
+    }
+  }
+  return jobs;
 }
 
 function ringLength(ring) {
@@ -141,8 +252,8 @@ async function buildShapes() {
     const path = new Path2D();
     const rings = [];
     for (const poly of c.polygons) for (const ring of poly) { addRing(path, ring); rings.push(ring); }
-    const start = h.start ?? D * 0.1 + i * stagger;
-    const trace = Math.min(1.6, D * 0.35);
+    const start = h.start ?? cameraPlan.starts?.[i] ?? D * 0.1 + i * stagger;
+    const trace = Math.min(1.6, D * 0.35, cameraPlan.hold ? cameraPlan.hold * 0.5 : Infinity);
     const labelStart = start + trace * 0.75;
     const labelDur = h.labelAnim === 'type' ? Math.max(0.5, (h.label?.length ?? 0) * 0.07) : 0.6;
     return {
@@ -158,7 +269,7 @@ function buildContext() {
   land = new Path2D();
   for (const country of S.context) {
     for (const poly of country.polygons) {
-      for (const ring of poly) addRing(land, ring);
+      if (!country.linesOnly) for (const ring of poly) addRing(land, ring);
       borderRings.push(poly[0]);
     }
   }
@@ -348,11 +459,22 @@ function labelSize(s) {
   return fit * s.h.labelSize;
 }
 
+// Screen position of the label, moved up or down when it would sit on top of this country's city marker.
+function labelPosition(s, size) {
+  const [x, y] = toScreen(s.c.labelPoint);
+  if (!s.c.city) return [x, y];
+  const [cx, cy] = toScreen(s.c.city.point);
+  const halfW = (s.c.labelWidth * cam.k) / 2;
+  const clear = size * 0.95;
+  if (Math.abs(cx - x) > halfW || Math.abs(cy - y) >= clear) return [x, y];
+  return [x, cy > y ? cy - clear : cy + clear];
+}
+
 function drawLabel(s, p) {
   const { h } = s;
   if (!h.label || p <= 0) return;
-  const [x, y] = toScreen(s.c.labelPoint);
   const size = labelSize(s);
+  const [x, y] = labelPosition(s, size);
   const e = easeOut(p);
   const full = labelLines(h.label);
   let lines = full;
@@ -566,11 +688,179 @@ function drawVignette(v) {
   ctx.fillRect(0, 0, W, H);
 }
 
+// ---------- globe ----------
+
+const GLOBE_FRAG = `#version 300 es
+precision highp float;
+uniform vec2 uRes, uCenter;
+uniform float uR, uLod;
+uniform mat3 uRot;
+uniform sampler2D uTex;
+out vec4 outColor;
+const float PI = 3.14159265;
+void main() {
+  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec2 v = (px - uCenter) / uR;
+  float r = length(v);
+  if (r > 1.0) { outColor = vec4(0.0); return; }
+  float z = sqrt(1.0 - r * r);
+  vec3 w = uRot * vec3(v.x, -v.y, z);
+  float lat = clamp(asin(clamp(w.y, -1.0, 1.0)), -1.4844, 1.4844); // Web Mercator stops at 85 degrees
+  float lon = atan(w.x, w.z);
+  vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - log(tan(PI / 4.0 + lat / 2.0)) / (2.0 * PI));
+  vec3 c = textureLod(uTex, uv, uLod).rgb;
+  float shade = 0.3 + 0.7 * pow(z, 0.55); // darker towards the limb
+  float edge = smoothstep(1.0, 1.0 - 2.0 / uR, r);
+  outColor = vec4(c * shade * edge, edge);
+}`;
+
+let globeGL = null; // { canvas, gl, uniforms }
+let stars = null;
+
+async function buildGlobe3D() {
+  if (!cameraPlan.globe) return;
+  const n = 2 ** GLOBE_ZOOM;
+  const world = new OffscreenCanvas(n * 256, n * 256);
+  const wctx = world.getContext('2d');
+  const jobs = [];
+  for (let ty = 0; ty < n; ty++) {
+    for (let tx = 0; tx < n; tx++) {
+      jobs.push(loadImage(`/tile/${S.basemap.name}/${GLOBE_ZOOM}/${tx}/${ty}.jpg`).then((img) => {
+        if (img) wctx.drawImage(img, tx * 256, ty * 256);
+        else missing++;
+      }));
+    }
+  }
+  await Promise.all(jobs);
+
+  const glCanvas = new OffscreenCanvas(W, H);
+  const gl = glCanvas.getContext('webgl2', { premultipliedAlpha: true, preserveDrawingBuffer: true });
+  if (!gl) throw new Error('WebGL2 is not available in this browser, so the globe camera cannot run');
+  const compile = (type, src) => {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+    return sh;
+  };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, '#version 300 es\nin vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }'));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, GLOBE_FRAG));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, world);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const u = (name) => gl.getUniformLocation(prog, name);
+  globeGL = { canvas: glCanvas, gl, uniforms: { res: u('uRes'), center: u('uCenter'), r: u('uR'), lod: u('uLod'), rot: u('uRot') }, texSize: n * 256 };
+
+  let seed = 11;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  stars = new OffscreenCanvas(W, H);
+  const sctx = stars.getContext('2d');
+  sctx.fillStyle = '#01030a';
+  sctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < (W * H) / 2600; i++) {
+    sctx.fillStyle = `rgba(255,255,255,${0.15 + rand() * 0.75})`;
+    const r = rand() < 0.93 ? 0.6 : 1.3;
+    sctx.beginPath();
+    sctx.arc(rand() * W, rand() * H, r, 0, Math.PI * 2);
+    sctx.fill();
+  }
+}
+
+// Column-major rotation taking view space (x right, y up, z towards the viewer) to the globe at lat/lon.
+function globeRotation(latDeg, lonDeg) {
+  const la = (latDeg * Math.PI) / 180, lo = (lonDeg * Math.PI) / 180;
+  const cl = Math.cos(la), sl = Math.sin(la), co = Math.cos(lo), so = Math.sin(lo);
+  // Ry(lon) * Rx(-lat), written out row by row, then transposed for GLSL.
+  const m = [
+    [co, -so * sl, so * cl],
+    [0, cl, sl],
+    [-so, -co * sl, co * cl],
+  ];
+  return [m[0][0], m[1][0], m[2][0], m[0][1], m[1][1], m[2][1], m[0][2], m[1][2], m[2][2]];
+}
+
+function drawGlobe(g) {
+  const { gl, uniforms, canvas: glCanvas, texSize } = globeGL;
+  gl.viewport(0, 0, W, H);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.uniform2f(uniforms.res, W, H);
+  gl.uniform2f(uniforms.center, W / 2, H / 2);
+  gl.uniform1f(uniforms.r, g.r);
+  gl.uniform1f(uniforms.lod, Math.max(0, Math.log2(texSize / (Math.PI * g.r))));
+  gl.uniformMatrix3fv(uniforms.rot, false, globeRotation(g.lat, g.lon));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  const [space, sctx] = pooled('globe');
+  sctx.drawImage(stars, 0, 0);
+  // Atmosphere: a soft blue halo just outside the limb, fading out as the globe fills the frame.
+  const halo = clamp01(1.6 - g.r / Math.max(W, H));
+  if (halo > 0) {
+    const atm = sctx.createRadialGradient(W / 2, H / 2, g.r * 0.96, W / 2, H / 2, g.r * 1.16);
+    atm.addColorStop(0, `rgba(120,180,255,${0.55 * halo})`);
+    atm.addColorStop(0.35, `rgba(70,130,255,${0.25 * halo})`);
+    atm.addColorStop(1, 'rgba(40,90,255,0)');
+    sctx.fillStyle = atm;
+    sctx.fillRect(0, 0, W, H);
+  }
+  sctx.drawImage(glCanvas, 0, 0);
+  // Hand-off: globe and flat map agree at the centre but not at the edges of a wide view, so the flat
+  // map is revealed from the centre outwards instead of cross-fading everywhere at once.
+  if (g.alpha < 1) {
+    const a = 1 - g.alpha;
+    const reach = Math.hypot(W, H) / 2;
+    const mask = sctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, reach);
+    mask.addColorStop(0, `rgba(0,0,0,${clamp01(1 - a * 2.2)})`);
+    mask.addColorStop(clamp01(a * 1.3 - 0.3) || 0.0001, `rgba(0,0,0,${clamp01(1.4 - a * 1.6)})`);
+    mask.addColorStop(1, `rgba(0,0,0,${clamp01(1.6 - a * 1.6)})`);
+    sctx.globalCompositeOperation = 'destination-in';
+    sctx.fillStyle = mask;
+    sctx.fillRect(0, 0, W, H);
+    sctx.globalCompositeOperation = 'source-over';
+  }
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(space, 0, 0);
+  ctx.restore();
+}
+
 // ---------- frame ----------
 
 function draw(t) {
   cam = camera(t);
   layers = new Map();
+  const g = cameraPlan.globe?.at(t);
+  if (g && g.alpha >= 1) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    drawGlobe(g);
+    drawVignette(S.effects.vignette);
+    return;
+  }
+  drawFlat(t);
+  if (g && g.alpha > 0) drawGlobe(g);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  if (paperTexture) {
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(paperTexture, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  drawVignette(S.effects.vignette);
+}
+
+function drawFlat(t) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
@@ -604,12 +894,6 @@ function draw(t) {
   for (const s of shapes) drawLabel(s, progress(t, s.timing.labelStart, s.timing.labelDur));
   for (const s of shapes) drawCity(s, t);
   drawLegend(t);
-  if (paperTexture) {
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.drawImage(paperTexture, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
-  }
-  drawVignette(S.effects.vignette);
 }
 
 window.mapcast = {
@@ -623,6 +907,7 @@ window.mapcast = {
     await Promise.all([
       buildShapes(),
       buildMosaics(),
+      buildGlobe3D(),
       document.fonts.load('700 40px Montserrat'),
       document.fonts.load('700 40px Cinzel'),
     ]);

@@ -6,7 +6,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { sceneSchema } from '../src/schema.js';
 import { normalizeScene } from '../src/scene.js';
-import { findCity, resolveCountries } from '../src/geo.js';
+import { findCity, prepareCountry, resolveHighlights } from '../src/geo.js';
 
 const root = new URL('../', import.meta.url);
 const validate = new Ajv2020({ allErrors: true, strict: false }).compile(sceneSchema);
@@ -30,9 +30,10 @@ for (const [name, scene] of await scenes()) {
   test(name, async () => {
     assert.ok(validate(scene), JSON.stringify(validate.errors, null, 2));
     const s = normalizeScene(scene);
-    const { matched } = await resolveCountries(s.highlights.map((h) => h.country), s.pov);
+    const { matched } = await resolveHighlights(s.highlights, s.pov);
     for (const [i, h] of s.highlights.entries()) {
-      if (h.capital) assert.ok(await findCity(matched[i].properties.ADM0_A3, h.capital), `no city "${h.capital}" in ${h.country}`);
+      const c = prepareCountry(matched[i]);
+      if (h.capital) assert.ok(await findCity(c.code, h.capital, c.region), `no city "${h.capital}" in ${h.region ?? h.country}`);
     }
   });
 }

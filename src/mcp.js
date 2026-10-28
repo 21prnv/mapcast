@@ -13,7 +13,7 @@ const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url
 
 const GUIDE = `Highlights countries on real satellite imagery (or an old paper map) with a tracing border, colour fill, glow and label, the look of documentary/explainer YouTube videos.
 Write a scene: { "highlights": [{ "country": "India" }] } is a complete one. Add only what the request asks for; defaults look good.
-Map requests to fields: a colour -> highlights[].color; "show the flag" -> style "flag"; "rest of the world grey/dark" -> style "highlight"; "just the border" -> style "outline"; "old map / history / parchment" -> basemap "paper"; "zoom in from space/far away" -> camera "zoom-in"; "Shorts/Reels/TikTok/vertical" -> aspect "9:16"; "mark the capital" -> capital true; "compare countries by <number>" -> data.values with a title.
+Map requests to fields: a colour -> highlights[].color; "show the flag" -> style "flag"; "rest of the world grey/dark" -> style "highlight"; "just the border" -> style "outline"; "old map / history / parchment" -> basemap "paper"; "from space / the globe / spinning Earth" -> camera "globe"; "zoom in from far away" -> camera "zoom-in"; "travel/tour/go from X to Y" -> camera "fly" with highlights in visiting order; a state or province -> highlights[].region; "Shorts/Reels/TikTok/vertical" -> aspect "9:16"; "mark the capital" -> capital true; "compare countries by <number>" -> data.values with a title.
 Borders follow the highlighted country's official view of disputed areas (pov "auto").`;
 
 const tools = [

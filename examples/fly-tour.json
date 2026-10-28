@@ -1,0 +1,8 @@
+{
+  "camera": "fly",
+  "highlights": [
+    { "country": "India" },
+    { "country": "France", "style": "flag" },
+    { "country": "Japan", "capital": true }
+  ]
+}

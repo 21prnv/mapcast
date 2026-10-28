@@ -163,8 +163,42 @@ Istanbul is not the capital (Ankara is), so name the city.
 { "basemap": "paper", "camera": "zoom-in", "highlights": [{ "country": "Turkey", "capital": "Istanbul" }] }
 ```
 
+## 23. "Start from space and dive into India"
+```json
+{ "camera": "globe", "highlights": [{ "country": "India" }] }
+```
+
+## 24. "A Short that spins the globe and lands on Brazil with its flag"
+```json
+{ "aspect": "9:16", "camera": "globe", "highlights": [{ "country": "Brazil", "style": "flag" }] }
+```
+
+## 25. "Travel from India to France to Japan"
+```json
+{
+  "camera": "fly",
+  "highlights": [{ "country": "India" }, { "country": "France", "style": "flag" }, { "country": "Japan", "capital": true }]
+}
+```
+
+## 26. "Highlight California and mark its capital"
+```json
+{ "highlights": [{ "region": "California", "color": "gold", "capital": true }] }
+```
+
+## 27. "Maharashtra and Karnataka in different colours, with Mumbai and Bengaluru"
+```json
+{
+  "highlights": [
+    { "region": "Maharashtra", "capital": "Mumbai" },
+    { "region": "Karnataka", "capital": "Bengaluru" }
+  ]
+}
+```
+
 ## Requests to decline or redirect
 
-- "Highlight California" / "Show the state of Kerala": states and provinces are not supported yet. Offer the country.
-- "Draw a route from Delhi to London": routes are not supported yet.
+- "Highlight the district of Pune" / "Show Manhattan": only countries, states and provinces are supported.
+- "Draw a route from Delhi to London": routes are not supported yet; `camera: "fly"` between the two countries is
+  the closest real option, so offer that.
 - "Colour Africa by GDP" with no numbers: ask for the figures or offer to look them up and cite the source.

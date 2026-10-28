@@ -1,0 +1,7 @@
+{
+  "duration": 5,
+  "camera": "push-in",
+  "highlights": [
+    { "country": "India", "style": "solid", "color": "#c8102e", "label": "INDIA" }
+  ]
+}

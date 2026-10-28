@@ -1,0 +1,7 @@
+{
+  "duration": 5,
+  "camera": "push-in",
+  "highlights": [
+    { "country": "United States", "style": "highlight", "color": "yellow", "label": false }
+  ]
+}

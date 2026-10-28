@@ -1,0 +1,10 @@
+{
+  "duration": 6,
+  "aspect": "16:9",
+  "camera": "zoom-in",
+  "highlights": [
+    { "country": "France" },
+    { "country": "Spain" },
+    { "country": "Germany" }
+  ]
+}

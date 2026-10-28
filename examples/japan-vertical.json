@@ -1,0 +1,7 @@
+{
+  "aspect": "9:16",
+  "duration": 4,
+  "highlights": [
+    { "country": "Japan", "style": "outline", "border": { "color": "#ffffff", "width": 4, "glow": 1 } }
+  ]
+}

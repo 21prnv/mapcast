@@ -1,6 +1,7 @@
 {
   "name": "mapcast",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "mcpName": "io.github.21prnv/mapcast",
   "description": "Animated map videos and images for explainers and Shorts: highlight countries and states on satellite or paper maps, with flags, labels, data colours, a globe dive and camera flights. CLI, MCP server and AI skill.",
   "type": "module",
   "bin": {

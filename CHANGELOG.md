@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.1
+
+- Listed in the official MCP Registry as `io.github.21prnv/mapcast` (`mcpName` in package.json, `server.json`).
+- First release published from GitHub Actions through npm trusted publishing.
+
+## 0.1.0
 
 First release.
 

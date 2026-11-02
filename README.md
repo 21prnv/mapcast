@@ -159,3 +159,5 @@ MIT. Map data, imagery and font licences are in [NOTICE.md](NOTICE.md). Satellit
 wherever you publish; mapcast prints the exact line after every render.
 
 Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+[![M8ven Score](https://m8ven.ai/badge/mcp/21prnv-mapcast-c8zmhu?v=4dfd1c8a9f0a5b65bfb0e33dc7df3784)](https://m8ven.ai/mcp/21prnv-mapcast-c8zmhu?s=readme)
